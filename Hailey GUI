@@ -1,12 +1,12 @@
-#Current GUI as of 11/5/25 1129
-#Needs to be reorganized into classes
-#Needs to add in the Battery Health tab.
+#Current GUI as of 11/5/25 1233
+#Battery Health tab created and needs to add the database inside. It is only a shell
+#Gui changed to drop down menu
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pyodbc
 import threading
 from datetime import datetime, timedelta
-
 
 # ---------- CONFIG ----------
 SQL_SERVER = "HAILEY"
@@ -20,7 +20,7 @@ PANEL_BG = "#0f0f0f"
 TEXT_COLOR = CREAM
 # ----------------------------
 
-
+# ---------- DATABASE ----------
 class DatabaseManager:
     def __init__(self, server=SQL_SERVER, database=DATABASE):
         self.server = server
@@ -42,7 +42,6 @@ class DatabaseManager:
         cur = self.conn.cursor()
         cur.execute(sql, params or [])
         return cur.fetchall()
-
 
 # ---------- UTILITIES ----------
 class AlarmUtility:
@@ -107,6 +106,18 @@ class TableUtility:
         return [r for r in self.get_all_tables() if (r[2] or 0) == 0]
 
 
+class DeviceHealthUtility:
+    def __init__(self, db: DatabaseManager):
+        self.db = db
+
+    def get_device_status(self):
+        sql = """
+        SELECT device_id, device_name, status, last_checked
+        FROM dbo.device_health
+        ORDER BY last_checked DESC;
+        """
+        return self.db.query(sql)
+
 # ---------- GUI ----------
 class UtilityGUI(tk.Tk):
     def __init__(self, app):
@@ -124,7 +135,6 @@ class UtilityGUI(tk.Tk):
         s = ttk.Style(self)
         s.theme_use('clam')
 
-        # Base colors
         s.configure("TFrame", background=BG_BLACK)
         s.configure("Left.TFrame", background=PANEL_BG)
         s.configure("Main.TFrame", background=BG_BLACK)
@@ -132,7 +142,6 @@ class UtilityGUI(tk.Tk):
         s.configure("Accent.TButton", background=DARK_GREEN, foreground=CREAM)
         s.map("Accent.TButton", background=[('active', DARK_GREEN)], foreground=[('active', CREAM)])
 
-        # --- Treeview (table) styling ---
         s.configure("Treeview",
                     background=BG_BLACK,
                     foreground=CREAM,
@@ -144,13 +153,12 @@ class UtilityGUI(tk.Tk):
                     foreground=CREAM,
                     font=("Segoe UI", 10, "bold"))
         s.map("Treeview.Heading",
-            background=[('active', '#1a7b50')],
-            foreground=[('active', CREAM)])
+              background=[('active', '#1a7b50')],
+              foreground=[('active', CREAM)])
 
-        # Tag styles for alternating rows
         s.map("Treeview",
-            background=[('selected', '#1a7b50')],
-            foreground=[('selected', 'white')])
+              background=[('selected', '#1a7b50')],
+              foreground=[('selected', 'white')])
 
     def _create_sidebar(self):
         self.sidebar = ttk.Frame(self, style="Left.TFrame", width=220)
@@ -158,7 +166,7 @@ class UtilityGUI(tk.Tk):
         self.sidebar.pack_propagate(False)
 
         tk.Label(self.sidebar, text="Menu", font=("Segoe UI", 14, "bold"),
-                bg=PANEL_BG, fg=CREAM).pack(pady=(16, 8))
+                 bg=PANEL_BG, fg=CREAM).pack(pady=(16, 8))
 
         # --- Alarms main button ---
         self.alarm_button = ttk.Button(
@@ -167,29 +175,36 @@ class UtilityGUI(tk.Tk):
         )
         self.alarm_button.pack(fill="x", padx=12, pady=(6, 0))
 
-        # --- Placeholder for dropdown (stays right under the button) ---
+        # Alarm dropdown container
         self.alarm_container = tk.Frame(self.sidebar, bg=PANEL_BG)
         self.alarm_container.pack(fill="x", padx=0, pady=0)
-
-        # Create submenu inside container (hidden initially)
         self.alarm_frame = tk.Frame(self.alarm_container, bg=PANEL_BG)
         self.alarm_frame.pack_forget()
 
+        # Alarm submenu buttons (using lambda to avoid init errors)
         tk.Button(self.alarm_frame, text="Active", bg=PANEL_BG, fg=CREAM,
-                relief="flat", anchor="w", command=self.app.show_active_alarms).pack(fill="x", pady=2)
+                  relief="flat", anchor="w",
+                  command=lambda: self.app.show_active_alarms()).pack(fill="x", pady=2)
         tk.Button(self.alarm_frame, text="Repeated", bg=PANEL_BG, fg=CREAM,
-                relief="flat", anchor="w", command=self.app.show_repeated_alarms).pack(fill="x", pady=2)
+                  relief="flat", anchor="w",
+                  command=lambda: self.app.show_repeated_alarms()).pack(fill="x", pady=2)
         tk.Button(self.alarm_frame, text="Orphan", bg=PANEL_BG, fg=CREAM,
-                relief="flat", anchor="w", command=self.app.show_orphan_alarms).pack(fill="x", pady=2)
+                  relief="flat", anchor="w",
+                  command=lambda: self.app.show_orphan_alarms()).pack(fill="x", pady=2)
+        # Device Health button
+        ttk.Button(self.sidebar, text="Device Health", style="Accent.TButton",
+                   command=lambda: self.app.show_device_health()).pack(fill="x", padx=12, pady=6)
 
-        # --- Other utilities follow (these now stay below dropdown properly) ---
+        # Other utilities
         ttk.Button(self.sidebar, text="Tables w/ Info", style="Accent.TButton",
-                command=self.app.show_tables_with_info).pack(fill="x", padx=12, pady=6)
+                   command=lambda: self.app.show_tables_with_info()).pack(fill="x", padx=12, pady=6)
         ttk.Button(self.sidebar, text="Tables w/o Info", style="Accent.TButton",
-                command=self.app.show_tables_without_info).pack(fill="x", padx=12, pady=6)
+                   command=lambda: self.app.show_tables_without_info()).pack(fill="x", padx=12, pady=6)
 
+        
+        # DB connection label
         self.conn_label = tk.Label(self.sidebar, text="DB: Connecting...",
-                                bg=PANEL_BG, fg=CREAM)
+                                   bg=PANEL_BG, fg=CREAM)
         self.conn_label.pack(side="bottom", pady=10)
 
     def _create_main_panel(self):
@@ -202,21 +217,15 @@ class UtilityGUI(tk.Tk):
         )
         self.title_label.pack(fill="x", pady=(0, 5))
 
-        # --- Table container frame (so scrollbar and tree align properly) ---
         table_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
         table_frame.pack(fill="both", expand=True)
 
-        # Treeview (table)
         self.tree = ttk.Treeview(table_frame, columns=(), show="headings")
         self.tree.pack(side="left", fill="both", expand=True)
 
-        # Vertical scrollbar on the RIGHT
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         scrollbar.pack(side="right", fill="y")
-
-        # Link scrollbar to Treeview
         self.tree.configure(yscrollcommand=scrollbar.set)
-
 
     def _toggle_alarm_menu(self):
         if self.alarm_submenu_visible:
@@ -226,8 +235,6 @@ class UtilityGUI(tk.Tk):
             self.alarm_frame.pack(fill="x", padx=24)
             self.alarm_button.config(text="Alarms ▾")
         self.alarm_submenu_visible = not self.alarm_submenu_visible
-
-
 
 # ---------- APP CONTROLLER ----------
 class UtilityApp:
@@ -240,6 +247,7 @@ class UtilityApp:
 
         self.alarms = AlarmUtility(self.db)
         self.tables = TableUtility(self.db)
+        self.devices = DeviceHealthUtility(self.db)
         self.gui = UtilityGUI(self)
 
         self.show_active_alarms()
@@ -252,7 +260,6 @@ class UtilityApp:
     def _load_active_alarms(self):
         try:
             rows = self.alarms.get_active()
-            # Convert datetime into readable durations
             now = datetime.now()
             formatted = []
             for r in rows:
@@ -262,7 +269,7 @@ class UtilityApp:
                 hours, rem = divmod(duration.seconds, 3600)
                 mins = rem // 60
                 duration_str = f"{days}d {hours}h {mins}m"
-                formatted.append((*r[:5], duration_str, r[7]))  # adjust tuple positions
+                formatted.append((*r[:5], duration_str, r[7]))
         except Exception as e:
             self._show_error(str(e))
             return
@@ -303,6 +310,19 @@ class UtilityApp:
         rows = self.tables.get_without_info()
         self._populate_tree(rows, ("Schema", "Table", "Rows"))
 
+    # ---- DEVICE HEALTH VIEW ----
+    def show_device_health(self):
+        self.gui.title_label.config(text="Device Health")
+        threading.Thread(target=self._load_device_health, daemon=True).start()
+
+    def _load_device_health(self):
+        try:
+            rows = self.devices.get_device_status()
+        except Exception as e:
+            self._show_error(str(e))
+            return
+        self._populate_tree(rows, ("Device ID", "Device Name", "Status", "Last Checked"))
+
     # ---- HELPERS ----
     def _populate_tree(self, rows, cols):
         tree = self.gui.tree
@@ -310,28 +330,23 @@ class UtilityApp:
         tree["columns"] = cols
         tree["show"] = "headings"
 
-        # Configure column headers
         for c in cols:
             tree.heading(c, text=c, anchor="center")
             tree.column(c, width=150, anchor="center")
 
-        # Handle "no data" message
         if not rows:
             tree["columns"] = ("Message",)
             tree.heading("Message", text="")
             tree.column("Message", anchor="center", width=800)
-            tree.insert("", "end", values=("⚠️ No active alarms found.",))
+            tree.insert("", "end", values=("⚠️ No data found.",))
             return
 
-        # Insert rows with alternating colors
         for i, r in enumerate(rows):
             tag = "evenrow" if i % 2 == 0 else "oddrow"
             tree.insert("", "end", values=r, tags=(tag,))
 
-        # Apply alternating row colors
         tree.tag_configure("evenrow", background="#000000", foreground=CREAM)
         tree.tag_configure("oddrow", background="#0f3021", foreground=CREAM)
-
 
     def _show_error(self, msg):
         messagebox.showerror("Error", msg)
