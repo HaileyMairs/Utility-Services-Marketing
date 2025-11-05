@@ -1,6 +1,24 @@
-#Current GUI as of 11/5/25 1233
-#Battery Health tab created and needs to add the database inside. It is only a shell
-#Gui changed to drop down menu
+'''Current GUI as of 11/5/25 1331
+*** ONLY LOOKING AT THE MCRWS-Telog DATABASE ***
+Battery Health tab created and needs to add the database inside. It is only a shell
+Gui changed to drop down menu
+
+CURRENT SETUP
+Alarms
+    Active
+        displays all current active alarms across all sites. 
+    Repeated
+        shows alarms that have triggered multiples times in 7 days
+    Orphan
+        displays alarms that are not associated with a known site
+Device Health
+    Currently Empty
+System Reliability
+    Site Reliability    
+        ranks sites by reliability. calculates total downtime, number of outages, expected uptime, and normalized reliability score to prioritize maintenance or upgrades
+Tables w/ Info
+Tables w/o Info
+'''
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -117,6 +135,74 @@ class DeviceHealthUtility:
         ORDER BY last_checked DESC;
         """
         return self.db.query(sql)
+class SystemReliabilityUtility:
+    def __init__(self, db: DatabaseManager):
+        self.db = db
+
+    def get_site_reliability(self):
+        """
+        Computes site reliability combining alarm_log, alarm_states, and RecPowerInfoTable.
+        Safely handles NULL values and large sums (BIGINT), avoids SQL Server warnings and overflow.
+        """
+        sql = """
+        WITH AlarmDurations AS (
+            SELECT
+                site_id,
+                SUM(CAST(ISNULL(alarm_event_duration, 0) AS BIGINT)) AS downtime_seconds,
+                COUNT(*) AS outage_count
+            FROM dbo.alarm_log
+            GROUP BY site_id
+        ),
+        PowerInfo AS (
+            SELECT
+                CAST(RecIdKey AS VARCHAR(50)) AS measurement_id,
+                SUM(CAST(ISNULL(RecordingInterval, 0) AS BIGINT)) AS expected_uptime_seconds
+            FROM dbo.RecPowerInfoTable
+            GROUP BY CAST(RecIdKey AS VARCHAR(50))
+        ),
+        SitePower AS (
+            SELECT a.site_id,
+                   SUM(CAST(ISNULL(p.expected_uptime_seconds, 0) AS BIGINT)) AS expected_uptime_seconds
+            FROM AlarmDurations a
+            LEFT JOIN dbo.alarm_log al ON a.site_id = al.site_id
+            LEFT JOIN PowerInfo p ON CAST(ISNULL(al.measurement_id, '') AS VARCHAR(50)) = p.measurement_id
+            GROUP BY a.site_id
+        )
+        SELECT
+            a.site_id,
+            a.outage_count,
+            a.downtime_seconds,
+            ISNULL(sp.expected_uptime_seconds, 0) AS expected_uptime_seconds,
+            CAST(
+                CASE 
+                    WHEN ISNULL(sp.expected_uptime_seconds, 0) = 0 THEN 0
+                    ELSE 1.0 - (a.downtime_seconds * 1.0 / sp.expected_uptime_seconds)
+                END
+            AS DECIMAL(5,2)) AS reliability_score
+        FROM AlarmDurations a
+        LEFT JOIN SitePower sp ON a.site_id = sp.site_id
+        ORDER BY reliability_score ASC, outage_count DESC
+        """
+        return self.db.query(sql)
+
+    def format_for_treeview(self, rows):
+        """
+        Convert raw SQL output into formatted lists for Treeview.
+        Adds comma separators for large numbers and two decimals for reliability.
+        """
+        formatted = []
+        for r in rows:
+            site_id, outages, downtime, expected, reliability = r
+            formatted.append([
+                str(site_id),
+                str(outages),
+                f"{downtime:,}",       # 123456 -> 123,456
+                f"{expected:,}",       # 123456 -> 123,456
+                f"{reliability:.2f}"   # 0.95432 -> 0.95
+            ])
+        return formatted
+
+
 
 # ---------- GUI ----------
 class UtilityGUI(tk.Tk):
@@ -130,6 +216,7 @@ class UtilityGUI(tk.Tk):
         self._create_sidebar()
         self._create_main_panel()
         self.alarm_submenu_visible = False
+        self.reliability_submenu_visible = False
 
     def _setup_styles(self):
         s = ttk.Style(self)
@@ -181,7 +268,7 @@ class UtilityGUI(tk.Tk):
         self.alarm_frame = tk.Frame(self.alarm_container, bg=PANEL_BG)
         self.alarm_frame.pack_forget()
 
-        # Alarm submenu buttons (using lambda to avoid init errors)
+        # Alarm submenu buttons
         tk.Button(self.alarm_frame, text="Active", bg=PANEL_BG, fg=CREAM,
                   relief="flat", anchor="w",
                   command=lambda: self.app.show_active_alarms()).pack(fill="x", pady=2)
@@ -191,17 +278,33 @@ class UtilityGUI(tk.Tk):
         tk.Button(self.alarm_frame, text="Orphan", bg=PANEL_BG, fg=CREAM,
                   relief="flat", anchor="w",
                   command=lambda: self.app.show_orphan_alarms()).pack(fill="x", pady=2)
-        # Device Health button
+
+        # --- Device Health button ---
         ttk.Button(self.sidebar, text="Device Health", style="Accent.TButton",
                    command=lambda: self.app.show_device_health()).pack(fill="x", padx=12, pady=6)
 
-        # Other utilities
+
+        # --- System Reliability dropdown ---
+        self.reliability_button = ttk.Button(
+            self.sidebar, text="System Reliability ▸", style="Accent.TButton",
+            command=self._toggle_reliability_menu
+        )
+        self.reliability_button.pack(fill="x", padx=12, pady=(6, 0))
+
+        self.reliability_container = tk.Frame(self.sidebar, bg=PANEL_BG)
+        self.reliability_container.pack(fill="x", padx=0, pady=0)
+        self.reliability_frame = tk.Frame(self.reliability_container, bg=PANEL_BG)
+        self.reliability_frame.pack_forget()
+
+        tk.Button(self.reliability_frame, text="Site Reliability", bg=PANEL_BG, fg=CREAM,
+                  relief="flat", anchor="w",
+                  command=lambda: self.app.show_system_reliability()).pack(fill="x", pady=2)
+        # --- Tables ---
         ttk.Button(self.sidebar, text="Tables w/ Info", style="Accent.TButton",
                    command=lambda: self.app.show_tables_with_info()).pack(fill="x", padx=12, pady=6)
         ttk.Button(self.sidebar, text="Tables w/o Info", style="Accent.TButton",
                    command=lambda: self.app.show_tables_without_info()).pack(fill="x", padx=12, pady=6)
 
-        
         # DB connection label
         self.conn_label = tk.Label(self.sidebar, text="DB: Connecting...",
                                    bg=PANEL_BG, fg=CREAM)
@@ -227,6 +330,7 @@ class UtilityGUI(tk.Tk):
         scrollbar.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=scrollbar.set)
 
+    # --- Toggle methods ---
     def _toggle_alarm_menu(self):
         if self.alarm_submenu_visible:
             self.alarm_frame.pack_forget()
@@ -235,6 +339,15 @@ class UtilityGUI(tk.Tk):
             self.alarm_frame.pack(fill="x", padx=24)
             self.alarm_button.config(text="Alarms ▾")
         self.alarm_submenu_visible = not self.alarm_submenu_visible
+
+    def _toggle_reliability_menu(self):
+        if self.reliability_submenu_visible:
+            self.reliability_frame.pack_forget()
+            self.reliability_button.config(text="System Reliability ▸")
+        else:
+            self.reliability_frame.pack(fill="x", padx=24)
+            self.reliability_button.config(text="System Reliability ▾")
+        self.reliability_submenu_visible = not self.reliability_submenu_visible
 
 # ---------- APP CONTROLLER ----------
 class UtilityApp:
@@ -322,6 +435,21 @@ class UtilityApp:
             self._show_error(str(e))
             return
         self._populate_tree(rows, ("Device ID", "Device Name", "Status", "Last Checked"))
+
+    # ---- System Reliability View----
+    def show_system_reliability(self):
+        self.gui.title_label.config(text="System Reliability & Operations")
+        threading.Thread(target=self._load_system_reliability, daemon=True).start()
+
+    def _load_system_reliability(self):
+        try:
+            util = SystemReliabilityUtility(self.db)
+            rows = util.get_site_reliability()
+            formatted_rows = util.format_for_treeview(rows)
+        except Exception as e:
+            self._show_error(str(e))
+            return
+        self._populate_tree(formatted_rows, ("Site ID", "Outages", "Downtime (s)", "Expected Uptime (s)", "Reliability Score"))
 
     # ---- HELPERS ----
     def _populate_tree(self, rows, cols):
