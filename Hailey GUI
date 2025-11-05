@@ -1,0 +1,742 @@
+#Current GUI as of 11/5/25 10:58 
+#Needs to be reorganized into classes
+#Needs to add in the Battery Health tab.
+import tkinter as tk
+from tkinter import ttk, messagebox
+import pyodbc
+from datetime import datetime, timedelta
+import threading
+
+# --------- Configuration ----------
+SQL_SERVER = "HAILEY"
+DATABASE = "MCRWS-Telog"
+REFRESH_MS = 60_000  # 1 minute auto-refresh for active alarms
+# color scheme
+BG_BLACK = "#000000"
+CREAM = "#FFF8E1"
+DARK_GREEN = "#0b5d3b"   # accent
+PANEL_BG = "#0f0f0f"
+TEXT_COLOR = CREAM
+# ---------------------------------
+
+class AlarmMonitorApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Telog Alarm Monitor")
+        self.state('zoomed')
+        self.configure(bg=BG_BLACK)
+
+        # style
+        self.style = ttk.Style(self)
+        # Use 'clam' theme for better Treeview styling compatibility
+        try:
+            self.style.theme_use('clam')
+        except Exception:
+            pass
+
+        # shared styles
+        self.style.configure("TFrame", background=BG_BLACK)
+        self.style.configure("Left.TFrame", background=PANEL_BG)
+        self.style.configure("Main.TFrame", background=BG_BLACK)
+        self.style.configure("TLabel", background=BG_BLACK, foreground=TEXT_COLOR)
+        self.style.configure("Accent.TButton", background=DARK_GREEN, foreground=CREAM)
+        self.style.map("Accent.TButton",
+                       background=[('active', DARK_GREEN)],
+                       foreground=[('active', CREAM)])
+
+        # db connection placeholder (define before menu)
+        self.conn = None
+        # create UI layout
+        self._create_left_menu()
+        self._create_main_area()
+
+        # db connection placeholder
+        self.conn = None
+
+        # connect immediately (trusted connection)
+        try:
+            self.connect_to_db_trusted()
+        except Exception as e:
+            messagebox.showerror("DB Connection Error",
+                                 f"Could not connect to SQL Server {SQL_SERVER}.{DATABASE}\n\n{e}")
+
+        # start showing active alarms by default
+        self.show_active_alarms()
+
+    # -------------------- DB --------------------
+    def connect_to_db_trusted(self):
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={SQL_SERVER};DATABASE={DATABASE};Trusted_Connection=yes;"
+        )
+        # If ODBC Driver 17 not found, user can change to 18 or whatever they have installed
+        try:
+            self.conn = pyodbc.connect(conn_str, autocommit=True, timeout=5)
+        except pyodbc.Error as e:
+            # try driver 18 as fallback
+            conn_str2 = conn_str.replace("ODBC Driver 17", "ODBC Driver 18")
+            self.conn = pyodbc.connect(conn_str2, autocommit=True, timeout=5)
+
+        # -------------------- UI --------------------
+    def _create_left_menu(self):
+        left = ttk.Frame(self, style="Left.TFrame", width=220)
+        left.pack(side="left", fill="y")
+        left.pack_propagate(False)
+
+        header = tk.Label(left, text="Menu", font=("Segoe UI", 14, "bold"),
+                          bg=PANEL_BG, fg=CREAM)
+        header.pack(pady=(16, 8))
+
+        # single "Alarms" button
+        btn_alarms = ttk.Button(left, text="Alarms", style="Accent.TButton",
+                                command=self.show_alarms_panel)
+        btn_alarms.pack(fill="x", padx=12, pady=6)
+        
+        ''' btn_alarms = ttk.Button(left, text="Device Health", style="Accent.TButton",
+                                command=self.show_device_health_panel)'''
+        btn_alarms.pack(fill="x", padx=12, pady=6)
+
+        btn_with = ttk.Button(left, text="Tables w/ Info", style="Accent.TButton",
+                              command=self.show_tables_with_info)
+        btn_with.pack(fill="x", padx=12, pady=6)
+
+        btn_without = ttk.Button(left, text="Tables w/o Info", style="Accent.TButton",
+                                 command=self.show_tables_without_info)
+        btn_without.pack(fill="x", padx=12, pady=6)
+
+        ttk.Label(left, text="", style="TLabel").pack(expand=True)
+
+        self.conn_status = tk.Label(left, text="DB: connecting...", bg=PANEL_BG, fg=CREAM,
+                                    wraplength=180, justify="left")
+        self.conn_status.pack(padx=12, pady=12, anchor="s")
+        self._update_conn_status()
+
+    def _create_main_area(self):
+        self.main_frame = ttk.Frame(self, style="Main.TFrame")
+        self.main_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+
+        # --- Title ---
+        self.panel_title = tk.Label(
+            self.main_frame,
+            text="Active Alarms",
+            font=("Segoe UI", 18, "bold"),
+            bg=BG_BLACK, fg=CREAM,
+            anchor="w"
+        )
+        self.panel_title.pack(fill="x", padx=8, pady=(0, 4))
+
+        
+        # --- Alarm Tab bar ---
+        self.alarm_tab_bar = ttk.Frame(self.main_frame, style="Main.TFrame")
+        self.alarm_tab_bar.pack(fill="x", padx=8, pady=(0, 8))
+
+        self.btn_active_tab = ttk.Button(self.alarm_tab_bar, text="Active", style="Accent.TButton",
+                                        command=self.show_active_alarms)
+        self.btn_repeated_tab = ttk.Button(self.alarm_tab_bar, text="Repeated", style="Accent.TButton",
+                                        command=self.show_repeated_alarms)
+        self.btn_orphan_tab = ttk.Button(self.alarm_tab_bar, text="Orphan", style="Accent.TButton",
+                                        command=self.show_orphan_alarms)
+
+        for b in (self.btn_active_tab, self.btn_repeated_tab, self.btn_orphan_tab):
+            b.pack(side="left", padx=4, ipadx=6, ipady=2)
+
+        # --- Device Health tab bar (created but not packed yet) ---
+        self.device_tab_bar = ttk.Frame(self.main_frame, style="Main.TFrame")
+        self.btn_power_loss_tab = ttk.Button(
+            self.device_tab_bar, text="Power Loss / Battery Critical",
+            style="Accent.TButton", command=self.show_power_loss_table
+        )
+        self.btn_low_battery_tab = ttk.Button(
+            self.device_tab_bar, text="Low Battery Voltage",
+            style="Accent.TButton", command=self.show_low_battery_table
+        )
+        for b in (self.btn_power_loss_tab, self.btn_low_battery_tab):
+            b.pack(side="left", padx=4, ipadx=6, ipady=2)
+
+
+        # --- Table frame ---
+        self.table_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
+        self.table_frame.pack(fill="both", expand=True)
+
+        self.tree = ttk.Treeview(self.table_frame, columns=(), show="headings", selectmode="browse")
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        vsb = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
+        vsb.pack(side="left", fill="y")
+        self.tree.configure(yscrollcommand=vsb.set)
+        
+        
+        # Treeview styling
+        self.style.configure("Treeview", background=BG_BLACK, foreground=CREAM,
+                            fieldbackground=BG_BLACK, rowheight=22)
+        self.style.configure("Treeview.Heading", background=DARK_GREEN,
+                            foreground=CREAM, font=("Segoe UI", 10, "bold"))
+        self.tree.tag_configure('oddrow', background="#0a0a0a")
+        self.tree.tag_configure('evenrow', background="#101010")
+
+        # Last refresh label
+        self.last_refresh_label = tk.Label(self.main_frame, text="", bg=BG_BLACK, fg=CREAM, anchor="e")
+        self.last_refresh_label.pack(fill="x", padx=8, pady=(4, 0))
+
+
+    def show_alarms_panel(self):
+        self.device_tab_bar.pack_forget()  # hide device health tabs
+        self.alarm_tab_bar.pack(fill="x", padx=8, pady=(0, 8))  # show alarm tabs
+        self.show_active_alarms()
+
+    def show_device_health_panel(self):
+        self.alarm_tab_bar.pack_forget()  # hide alarm tabs
+        self.device_tab_bar.pack(fill="x", padx=8, pady=(0, 8))  # show device health tabs
+        self.panel_title.config(text="Device Health")
+        self.show_power_loss_table()
+
+
+    def show_active_alarms(self):
+        """Modified to ensure tab bar stays visible."""
+        self.alarm_tab_bar.pack(fill="x", pady=(0, 8))
+        self.panel_title.config(text="Active Alarms")
+        self.clear_tree()
+        cols = ("ID", "Source", "Alarm Name", "SiteID", "Activated", "Duration", "Title")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 60
+            if c in ("Title", "Alarm Name"):
+                w = 300
+            elif c == "Activated":
+                w = 150
+            elif c == "Duration":
+                w = 120
+            elif c == "Source":
+                w = 120
+            self.tree.column(c, width=w, anchor="w")
+        self._load_active_alarms()
+        # ensure refresh timer runs only here
+        try:
+            if hasattr(self, "refresh_job"):
+                self.after_cancel(self.refresh_job)
+        except Exception:
+            pass
+        self.refresh_job = self.after(REFRESH_MS, self._auto_refresh_active_alarms)
+
+    def _update_conn_status(self):
+        if self.conn:
+            try:
+                # quick ping
+                cur = self.conn.cursor()
+                cur.execute("SELECT 1")
+                cur.fetchone()
+                self.conn_status.config(text=f"DB: {SQL_SERVER}\\{DATABASE} (Trusted)")
+            except Exception as e:
+                self.conn_status.config(text=f"DB: disconnected\n{e}")
+        else:
+            self.conn_status.config(text="DB: not connected")
+
+    # -------------------- Screens --------------------
+    def clear_tree(self):
+        for col in self.tree["columns"]:
+            self.tree.heading(col, text="")
+        self.tree.delete(*self.tree.get_children())
+        self.tree["columns"] = ()
+
+    def show_active_alarms(self):
+        self.panel_title.config(text="Active Alarms")
+        self.clear_tree()
+        cols = ("ID", "Source", "Alarm Name", "SiteID", "Activated", "Duration", "Title")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            # reasonable column widths
+            w = 60
+            if c in ("Title", "Alarm Name"):
+                w = 300
+            elif c == "Activated":
+                w = 150
+            elif c == "Duration":
+                w = 120
+            elif c == "Source":
+                w = 120
+            self.tree.column(c, width=w, anchor="w")
+
+        # fetch and populate
+        self._load_active_alarms()
+
+        # schedule periodic refresh
+        try:
+            # cancel any previous scheduled
+            if hasattr(self, "refresh_job"):
+                self.after_cancel(self.refresh_job)
+        except Exception:
+            pass
+        self.refresh_job = self.after(REFRESH_MS, self._auto_refresh_active_alarms)
+
+    def _auto_refresh_active_alarms(self):
+        # threaded to avoid blocking UI if DB is slow
+        threading.Thread(target=self._load_active_alarms, daemon=True).start()
+        # reschedule
+        self.refresh_job = self.after(REFRESH_MS, self._auto_refresh_active_alarms)
+
+    def _load_active_alarms(self):
+        # query active alarms
+        if not self.conn:
+            return
+        q = """
+        SELECT alarm_history_id, alarm_source_id, alarm_name, site_id, alarm_activation_time, alarm_deactivation_time, alarm_active, alarm_title
+        FROM dbo.alarm_history
+        WHERE alarm_active = 1
+        ORDER BY alarm_activation_time DESC;
+        """
+        try:
+            cur = self.conn.cursor()
+            cur.execute(q)
+            rows = cur.fetchall()
+        except Exception as e:
+            # show error in UI
+            self._show_error_in_tree(f"Error querying alarm_history: {e}")
+            return
+
+        # update last refresh label
+        now = datetime.now()
+        self.last_refresh_label.config(text=f"Last refresh: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # populate tree (in main thread)
+        def populate():
+            self.tree.delete(*self.tree.get_children())
+            for i, r in enumerate(rows):
+                # r fields: alarm_history_id, alarm_source_id, alarm_name, site_id, alarm_activation_time, alarm_deactivation_time, alarm_active, alarm_title
+                aid = r[0]
+                source = r[1] or ""
+                name = r[2] or ""
+                siteid = r[3] or ""
+                activated = r[4]  # datetime
+                activated_str = activated.strftime("%Y-%m-%d %H:%M:%S") if activated else ""
+                # duration = now - activated
+                try:
+                    duration_td = now - activated
+                    duration_str = self._format_timedelta(duration_td)
+                except Exception:
+                    duration_str = "N/A"
+                title = r[7] or ""
+                tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                self.tree.insert("", "end", values=(aid, source, name, siteid, activated_str, duration_str, title), tags=(tag,))
+        self.after(0, populate)
+
+    def _format_timedelta(self, td):
+        total_seconds = int(td.total_seconds())
+        if total_seconds < 0:
+            return "0s"
+        days, rem = divmod(total_seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, seconds = divmod(rem, 60)
+        if days > 0:
+            return f"{days}d {hours}h {minutes}m"
+        if hours > 0:
+            return f"{hours}h {minutes}m {seconds}s"
+        if minutes > 0:
+            return f"{minutes}m {seconds}s"
+        return f"{seconds}s"
+    def show_repeated_alarms(self):
+        self.panel_title.config(text="Repeated Alarms (≥2 in past 7 days)")
+        # stop auto-refresh for active alarms
+        if hasattr(self, "refresh_job"):
+            try:
+                self.after_cancel(self.refresh_job)
+            except Exception:
+                pass
+        self.clear_tree()
+
+        cols = ("Alarm Name", "Site ID", "Count", "Last Activated", "Title")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 200
+            if c == "Title":
+                w = 300
+            elif c == "Count":
+                w = 80
+            self.tree.column(c, width=w, anchor="w")
+
+        threading.Thread(target=self._load_repeated_alarms, daemon=True).start()
+
+
+    def _load_repeated_alarms(self):
+        """Loads alarms that have occurred 2+ times in the past 7 days."""
+        if not self.conn:
+            self._show_error_in_tree("Not connected to DB.")
+            return
+
+        one_week_ago = datetime.now() - timedelta(days=7)
+
+        query = """
+        SELECT 
+            alarm_name, 
+            site_id, 
+            COUNT(*) AS occ_count,
+            MAX(alarm_activation_time) AS last_activated,
+            MAX(alarm_title) AS title
+        FROM dbo.alarm_history
+        WHERE alarm_activation_time >= ?
+        GROUP BY alarm_name, site_id
+        HAVING COUNT(*) >= 2
+        ORDER BY occ_count DESC, last_activated DESC;
+        """
+
+        def load_data():
+            try:
+                cur = self.conn.cursor()
+                cur.execute(query, one_week_ago)
+                rows = cur.fetchall()
+            except Exception as e:
+                self._show_error_in_tree(f"Error querying repeated alarms: {e}")
+                return
+
+            def populate():
+                from datetime import datetime
+                self.tree.delete(*self.tree.get_children())
+
+                if not rows:
+                    # show message when no repeated alarms exist
+                    self.tree["columns"] = ("Message",)
+                    self.tree.heading("Message", text="Message")
+                    self.tree.column("Message", width=600, anchor="center")
+                    self.tree.insert("", "end", values=("✅ No repeated alarms found",))
+                    self.last_refresh_label.config(
+                        text=f"Refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                    return
+
+                cols = ("Alarm Name", "Site ID", "Count", "Last Activated", "Title")
+                self.tree["columns"] = cols
+                for c in cols:
+                    self.tree.heading(c, text=c)
+                    w = 200
+                    if c == "Title":
+                        w = 300
+                    elif c == "Count":
+                        w = 80
+                    elif c == "Last Activated":
+                        w = 160
+                    self.tree.column(c, width=w, anchor="w")
+
+                for i, r in enumerate(rows):
+                    tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                    name = r[0] or ""
+                    site_id = r[1] or ""
+                    count = r[2] or 0
+                    last_activated = r[3]
+                    last_str = last_activated.strftime("%Y-%m-%d %H:%M:%S") if isinstance(last_activated, datetime) else str(last_activated or "")
+                    title = r[4] or ""
+                    self.tree.insert("", "end", values=(name, site_id, count, last_str, title), tags=(tag,))
+
+                now = datetime.now()
+                self.last_refresh_label.config(text=f"Refreshed: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
+            self.after(0, populate)
+
+        threading.Thread(target=load_data, daemon=True).start()
+
+
+    def _show_error_in_tree(self, message):
+        self.clear_tree()
+        self.tree["columns"] = ("Error",)
+        self.tree.heading("Error", text="Error")
+        self.tree.column("Error", width=800)
+        self.tree.insert("", "end", values=(message,))
+
+    def show_tables_with_info(self):
+        self.panel_title.config(text="Tables with Information (row_count > 0)")
+        # stop auto-refresh for alarms
+        if hasattr(self, "refresh_job"):
+            try:
+                self.after_cancel(self.refresh_job)
+            except Exception:
+                pass
+        self.clear_tree()
+
+        cols = ("Schema", "Table Name", "Row Count")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 200 if c != "Row Count" else 120
+            self.tree.column(c, width=w, anchor="w")
+
+        threading.Thread(target=self._load_tables_counts, args=(True,), daemon=True).start()
+    def show_orphan_alarms(self):
+        """Displays alarms that reference missing sites (orphans)."""
+        self.panel_title.config(text="Orphan Alarms (No Matching Site)")
+        # stop auto-refresh for active alarms
+        if hasattr(self, "refresh_job"):
+            try:
+                self.after_cancel(self.refresh_job)
+            except Exception:
+                pass
+
+        self.clear_tree()
+
+        cols = ("Alarm ID", "Source ID", "Alarm Name", "Site ID",
+                "Activated", "Deactivated", "System Time", "Title")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 120
+            if c in ("Alarm Name", "Title"):
+                w = 250
+            elif c in ("Activated", "Deactivated", "System Time"):
+                w = 160
+            self.tree.column(c, width=w, anchor="w")
+
+        query = """
+        SELECT 
+            ah.alarm_history_id,
+            ah.alarm_source_id,
+            ah.alarm_name,
+            ah.site_id,
+            ah.alarm_activation_time,
+            ah.alarm_deactivation_time,
+            ah.alarm_system_time,
+            ah.alarm_title
+        FROM dbo.alarm_history AS ah
+        LEFT JOIN dbo.sites AS s 
+            ON ah.site_id = s.site_id
+        WHERE s.site_id IS NULL
+        ORDER BY ah.alarm_activation_time DESC;
+        """
+
+        def load_data():
+            try:
+                cur = self.conn.cursor()
+                cur.execute(query)
+                rows = cur.fetchall()
+            except Exception as e:
+                self._show_error_in_tree(f"Database error: {e}")
+                return
+
+            def populate():
+                from datetime import datetime
+                self.tree.delete(*self.tree.get_children())
+
+                if not rows:
+                    # show a "no orphan alarms" message
+                    self.tree["columns"] = ("Message",)
+                    self.tree.heading("Message", text="Message")
+                    self.tree.column("Message", width=600, anchor="center")
+                    self.tree.insert("", "end", values=("✅ No orphan alarms found",))
+                    self.last_refresh_label.config(
+                        text=f"Refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                    return
+
+                for i, r in enumerate(rows):
+                    tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+
+                    ah_id = r[0] or ""
+                    src_id = r[1] or ""
+                    name = r[2] or ""
+                    site_id = r[3] or ""
+
+                    # Safe datetime formatting
+                    def fmt(dt):
+                        if not dt:
+                            return ""
+                        return dt.strftime("%Y-%m-%d %H:%M:%S") if isinstance(dt, datetime) else str(dt)
+
+                    activated = fmt(r[4])
+                    deactivated = fmt(r[5])
+                    system_time = fmt(r[6])
+                    title = r[7] or ""
+
+                    self.tree.insert("", "end", values=(
+                        ah_id, src_id, name, site_id, activated, deactivated, system_time, title
+                    ), tags=(tag,))
+
+                now = datetime.now()
+                self.last_refresh_label.config(text=f"Refreshed: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
+            self.after(0, populate)
+
+        threading.Thread(target=load_data, daemon=True).start()
+
+
+    def show_tables_without_info(self):
+        self.panel_title.config(text="Tables without Information (row_count = 0)")
+        # stop auto-refresh for alarms
+        if hasattr(self, "refresh_job"):
+            try:
+                self.after_cancel(self.refresh_job)
+            except Exception:
+                pass
+        self.clear_tree()
+
+        cols = ("Schema", "Table Name")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 300
+            self.tree.column(c, width=w, anchor="w")
+
+        threading.Thread(target=self._load_tables_counts, args=(False,), daemon=True).start()
+
+    def _load_tables_counts(self, want_with_data=True):
+        if not self.conn:
+            self._show_error_in_tree("Not connected to DB.")
+            return
+
+        # Efficient row counts using sys.partitions (index_id 0 = heap, 1 = clustered index)
+        q = """
+        SELECT s.name AS schema_name, t.name AS table_name, SUM(p.rows) AS row_count
+        FROM sys.schemas s
+        JOIN sys.tables t ON t.schema_id = s.schema_id
+        LEFT JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0,1)
+        GROUP BY s.name, t.name
+        ORDER BY s.name, t.name;
+        """
+
+        try:
+            cur = self.conn.cursor()
+            cur.execute(q)
+            rows = cur.fetchall()
+        except Exception as e:
+            self._show_error_in_tree(f"Error getting table counts: {e}")
+            return
+
+        # partition into two lists
+        with_data = [r for r in rows if (r[2] or 0) > 0]
+        without_data = [r for r in rows if (r[2] or 0) == 0]
+
+        # populate according to requested view
+        def populate():
+            self.tree.delete(*self.tree.get_children())
+            if want_with_data:
+                for i, r in enumerate(with_data):
+                    tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                    self.tree.insert("", "end", values=(r[0], r[1], r[2] or 0), tags=(tag,))
+            else:
+                for i, r in enumerate(without_data):
+                    tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                    self.tree.insert("", "end", values=(r[0], r[1]), tags=(tag,))
+            # update last refresh label
+            now = datetime.now()
+            self.last_refresh_label.config(text=f"Refreshed: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.after(0, populate)
+    def show_power_loss_table(self):
+        self.clear_tree()
+        cols = ("Device ID", "Event Type", "Timestamp", "Details")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 150
+            if c == "Details": w = 300
+            self.tree.column(c, width=w, anchor="w")
+
+        if not self.conn:
+            return
+        query = """
+        SELECT device_id, event_type, event_time, details
+        FROM RecPowerInfoTable
+        WHERE event_type IN ('Power Loss', 'Battery Critical')
+        ORDER BY event_time DESC
+        """
+        try:
+            cur = self.conn.cursor()
+            cur.execute(query)
+            rows = cur.fetchall()
+        except Exception as e:
+            self._show_error_in_tree(f"DB error: {e}")
+            return
+
+        now = datetime.now()
+        def populate():
+            self.tree.delete(*self.tree.get_children())
+            for i, r in enumerate(rows):
+                tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                self.tree.insert("", "end", values=r, tags=(tag,))
+            self.last_refresh_label.config(text=f"Refreshed: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.after(0, populate)
+    def show_low_battery_table(self, threshold=11.0):
+        self.clear_tree()
+        cols = ("Device ID", "Voltage (V)", "Timestamp")
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=c)
+            w = 150
+            self.tree.column(c, width=w, anchor="w")
+
+        if not self.conn:
+            return
+        query = """
+        SELECT device_id, voltage, event_time
+        FROM RecPowerInfoTable
+        WHERE voltage <= ?
+        ORDER BY event_time DESC
+        """
+        try:
+            cur = self.conn.cursor()
+            cur.execute(query, threshold)
+            rows = cur.fetchall()
+        except Exception as e:
+            self._show_error_in_tree(f"DB error: {e}")
+            return
+
+        now = datetime.now()
+        def populate():
+            self.tree.delete(*self.tree.get_children())
+            for i, r in enumerate(rows):
+                tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                self.tree.insert("", "end", values=r, tags=(tag,))
+            self.last_refresh_label.config(text=f"Refreshed: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.after(0, populate)
+
+   
+    '''DEBUG'''    
+    def print_tables_info(self):
+        """Prints all tables vertically, grouped by those with and without data."""
+        if not self.conn:
+            print("Not connected to DB.")
+            return
+
+        q = """
+        SELECT s.name AS schema_name, t.name AS table_name, SUM(p.rows) AS row_count
+        FROM sys.schemas s
+        JOIN sys.tables t ON t.schema_id = s.schema_id
+        LEFT JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0,1)
+        GROUP BY s.name, t.name
+        ORDER BY s.name, t.name;
+        """
+
+        try:
+            cur = self.conn.cursor()
+            cur.execute(q)
+            rows = cur.fetchall()
+        except Exception as e:
+            print(f"Error getting table info: {e}")
+            return
+
+        # Split into tables with and without data
+        with_info = [f"{r[0]}.{r[1]} ({r[2]} rows)" for r in rows if (r[2] or 0) > 0]
+        without_info = [f"{r[0]}.{r[1]} (0 rows)" for r in rows if (r[2] or 0) == 0]
+
+        # Print results neatly
+        print("\n=== TABLES WITH INFORMATION ===")
+        if with_info:
+            for t in with_info:
+                print(t)
+        else:
+            print("(none)")
+
+        print("\n=== TABLES WITHOUT INFORMATION ===")
+        if without_info:
+            for t in without_info:
+                print(t)
+        else:
+            print("(none)")
+
+        print(f"\n=== SUMMARY ===\nWith info: {len(with_info)}\nWithout info: {len(without_info)}\nTotal: {len(rows)} tables\n")
+
+# ---------------------- Run ----------------------
+if __name__ == "__main__":
+    app = AlarmMonitorApp()
+    app.mainloop()
+    
+    '''DEBUG'''
+    #app.print_tables_info()
+
