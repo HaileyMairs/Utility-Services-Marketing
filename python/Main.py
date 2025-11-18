@@ -15,13 +15,27 @@ class DynamicUtilityApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Dynamic Utility App")
-        self.state("zoomed")
+        self._maximize_window()
         self.configure(bg=BG_BLACK)
 
         self._setup_styles()
         self._create_sidebar()
         self._create_main_panel()
         self.build_dynamic_sidebar()
+
+    def _maximize_window(self):
+        """Cross-platform fullscreen fallback."""
+        try:
+            self.state("zoomed")
+            return
+        except tk.TclError:
+            pass
+        try:
+            self.attributes("-zoomed", True)
+        except tk.TclError:
+            width = self.winfo_screenwidth()
+            height = self.winfo_screenheight()
+            self.geometry(f"{width}x{height}")
 
     # ---------------- Styles ----------------
     def _setup_styles(self):

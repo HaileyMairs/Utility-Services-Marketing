@@ -1,5 +1,5 @@
 '''Current GUI as of 11/5/25 1331
-*** ONLY LOOKING AT THE MCRWS-Telog DATABASE ***
+*** Reads every SQL dump placed in python/sql_data ***
 Battery Health tab created and needs to add the database inside. It is only a shell
 Gui changed to drop down menu
 
@@ -22,13 +22,12 @@ Tables w/o Info
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-import pyodbc
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
+
+from local_sql_loader import LocalSqlDatabase
 
 # ---------- CONFIG ----------
-SQL_SERVER = "HAILEY"
-DATABASE = "MCRWS-Telog"
 REFRESH_MS = 60_000
 
 BG_BLACK = "#000000"
@@ -38,28 +37,27 @@ PANEL_BG = "#0f0f0f"
 TEXT_COLOR = CREAM
 # ----------------------------
 
+
+def _parse_timestamp(value):
+    if not value or value in ("NULL", "null"):
+        return None
+    if isinstance(value, datetime):
+        return value
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(str(value), fmt)
+        except ValueError:
+            continue
+    return None
+
+
 # ---------- DATABASE ----------
-class DatabaseManager:
-    def __init__(self, server=SQL_SERVER, database=DATABASE):
-        self.server = server
-        self.database = database
-        self.conn = None
+class DatabaseManager(LocalSqlDatabase):
+    def __init__(self):
+        super().__init__()
 
     def connect(self):
-        conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.server};DATABASE={self.database};Trusted_Connection=yes;"
-        try:
-            self.conn = pyodbc.connect(conn_str, autocommit=True, timeout=5)
-        except pyodbc.Error:
-            conn_str = conn_str.replace("ODBC Driver 17", "ODBC Driver 18")
-            self.conn = pyodbc.connect(conn_str, autocommit=True, timeout=5)
         return self.conn
-
-    def query(self, sql, params=None):
-        if not self.conn:
-            raise Exception("Database not connected.")
-        cur = self.conn.cursor()
-        cur.execute(sql, params or [])
-        return cur.fetchall()
 
 # ---------- UTILITIES ----------
 class AlarmUtility:
@@ -71,23 +69,36 @@ class AlarmUtility:
         SELECT alarm_history_id, alarm_source_id, alarm_name, site_id, 
                alarm_activation_time, alarm_deactivation_time, alarm_active, alarm_title
         FROM dbo.alarm_history
-        WHERE alarm_active = 1
-        ORDER BY alarm_activation_time DESC;
+        WHERE IFNULL(alarm_active, '0') = '1'
+              OR alarm_deactivation_time IS NULL
+              OR alarm_deactivation_time = ''
+              OR UPPER(alarm_deactivation_time) = 'NULL'
+        ORDER BY datetime(alarm_activation_time) DESC
+        LIMIT 200;
         """
-        return self.db.query(sql)
+        rows = self.db.query(sql)
+        if rows:
+            return rows
+        fallback = """
+        SELECT alarm_history_id, alarm_source_id, alarm_name, site_id, 
+               alarm_activation_time, alarm_deactivation_time, alarm_active, alarm_title
+        FROM dbo.alarm_history
+        ORDER BY datetime(alarm_activation_time) DESC
+        LIMIT 200;
+        """
+        return self.db.query(fallback)
 
     def get_repeated(self):
-        one_week_ago = datetime.now() - timedelta(days=7)
         sql = """
         SELECT alarm_name, site_id, COUNT(*) AS occ_count, 
                MAX(alarm_activation_time) AS last_activated, MAX(alarm_title)
         FROM dbo.alarm_history
-        WHERE alarm_activation_time >= ?
         GROUP BY alarm_name, site_id
         HAVING COUNT(*) >= 2
-        ORDER BY occ_count DESC;
+        ORDER BY occ_count DESC, datetime(last_activated) DESC
+        LIMIT 200;
         """
-        return self.db.query(sql, [one_week_ago])
+        return self.db.query(sql)
 
     def get_orphan(self):
         sql = """
@@ -95,9 +106,12 @@ class AlarmUtility:
                ah.alarm_activation_time, ah.alarm_deactivation_time, 
                ah.alarm_system_time, ah.alarm_title
         FROM dbo.alarm_history AS ah
-        LEFT JOIN dbo.sites AS s ON ah.site_id = s.site_id
+        LEFT JOIN dbo.sites_table AS s ON ah.site_id = s.site_id
         WHERE s.site_id IS NULL
-        ORDER BY ah.alarm_activation_time DESC;
+               OR ah.measurement_id IS NULL
+               OR UPPER(ah.measurement_id) = 'NULL'
+        ORDER BY datetime(ah.alarm_activation_time) DESC
+        LIMIT 200;
         """
         return self.db.query(sql)
 
@@ -108,14 +122,19 @@ class TableUtility:
 
     def get_all_tables(self):
         sql = """
-        SELECT s.name, t.name, SUM(p.rows)
-        FROM sys.schemas s
-        JOIN sys.tables t ON t.schema_id = s.schema_id
-        LEFT JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0,1)
-        GROUP BY s.name, t.name
-        ORDER BY s.name, t.name;
+        SELECT name
+        FROM sqlite_master
+        WHERE type='table' AND name LIKE 'dbo.%'
+        ORDER BY name;
         """
-        return self.db.query(sql)
+        tables = self.db.query(sql)
+        rows = []
+        for (name,) in tables:
+            schema, table = name.split(".", 1)
+            count_sql = f"SELECT COUNT(*) FROM {name}"
+            row_count = self.db.scalar(count_sql) or 0
+            rows.append((schema, table, row_count))
+        return rows
 
     def get_with_info(self):
         return [r for r in self.get_all_tables() if (r[2] or 0) > 0]
@@ -130,9 +149,13 @@ class DeviceHealthUtility:
 
     def get_device_status(self):
         sql = """
-        SELECT device_id, device_name, status, last_checked
-        FROM dbo.device_health
-        ORDER BY last_checked DESC;
+        SELECT device_id,
+               device_name,
+               device_type_id,
+               device_leave_modem_on,
+               device_leave_switcher_off
+        FROM dbo.devices
+        ORDER BY device_name ASC;
         """
         return self.db.query(sql)
 class SystemReliabilityUtility:
@@ -140,50 +163,44 @@ class SystemReliabilityUtility:
         self.db = db
 
     def get_site_reliability(self):
-        """
-        Computes site reliability combining alarm_log, alarm_states, and RecPowerInfoTable.
-        Safely handles NULL values and large sums (BIGINT), avoids SQL Server warnings and overflow.
-        """
         sql = """
-        WITH AlarmDurations AS (
-            SELECT
-                site_id,
-                SUM(CAST(ISNULL(alarm_event_duration, 0) AS BIGINT)) AS downtime_seconds,
-                COUNT(*) AS outage_count
-            FROM dbo.alarm_log
-            GROUP BY site_id
-        ),
-        PowerInfo AS (
-            SELECT
-                CAST(RecIdKey AS VARCHAR(50)) AS measurement_id,
-                SUM(CAST(ISNULL(RecordingInterval, 0) AS BIGINT)) AS expected_uptime_seconds
-            FROM dbo.RecPowerInfoTable
-            GROUP BY CAST(RecIdKey AS VARCHAR(50))
-        ),
-        SitePower AS (
-            SELECT a.site_id,
-                   SUM(CAST(ISNULL(p.expected_uptime_seconds, 0) AS BIGINT)) AS expected_uptime_seconds
-            FROM AlarmDurations a
-            LEFT JOIN dbo.alarm_log al ON a.site_id = al.site_id
-            LEFT JOIN PowerInfo p ON CAST(ISNULL(al.measurement_id, '') AS VARCHAR(50)) = p.measurement_id
-            GROUP BY a.site_id
-        )
-        SELECT
-            a.site_id,
-            a.outage_count,
-            a.downtime_seconds,
-            ISNULL(sp.expected_uptime_seconds, 0) AS expected_uptime_seconds,
-            CAST(
-                CASE 
-                    WHEN ISNULL(sp.expected_uptime_seconds, 0) = 0 THEN 0
-                    ELSE 1.0 - (a.downtime_seconds * 1.0 / sp.expected_uptime_seconds)
-                END
-            AS DECIMAL(5,2)) AS reliability_score
-        FROM AlarmDurations a
-        LEFT JOIN SitePower sp ON a.site_id = sp.site_id
-        ORDER BY reliability_score ASC, outage_count DESC
+        SELECT site_id,
+               alarm_activation_time,
+               alarm_deactivation_time
+        FROM dbo.alarm_history
+        WHERE alarm_activation_time IS NOT NULL
+        ORDER BY site_id
+        LIMIT 10000;
         """
-        return self.db.query(sql)
+
+        rows = self.db.query(sql)
+        summary = {}
+        for site_id, activated, deactivated in rows:
+            start = _parse_timestamp(activated)
+            end = _parse_timestamp(deactivated) or start
+            if not start:
+                continue
+            delta = max((end - start).total_seconds(), 0) if end else 0
+            data = summary.setdefault(
+                site_id,
+                {"outages": 0, "downtime": 0.0, "first": start, "last": start},
+            )
+            data["outages"] += 1
+            data["downtime"] += delta
+            if start < data["first"]:
+                data["first"] = start
+            if end and end > data["last"]:
+                data["last"] = end
+
+        results = []
+        for site_id, data in summary.items():
+            span = max((data["last"] - data["first"]).total_seconds(), 1)
+            expected = max(span, data["downtime"])
+            reliability = max(0.0, 1.0 - (data["downtime"] / expected))
+            results.append((site_id, data["outages"], int(data["downtime"]), int(expected), reliability))
+
+        results.sort(key=lambda r: (r[4], -r[1]))
+        return results
 
     def format_for_treeview(self, rows):
         """
@@ -210,13 +227,28 @@ class UtilityGUI(tk.Tk):
         super().__init__()
         self.app = app
         self.title("Utility App")
-        self.state('zoomed')
+        self._maximize_window()
         self.configure(bg=BG_BLACK)
         self._setup_styles()
         self._create_sidebar()
         self._create_main_panel()
         self.alarm_submenu_visible = False
         self.reliability_submenu_visible = False
+
+    def _maximize_window(self):
+        """Cross-platform friendly maximize helper."""
+        for method in (
+            lambda: self.state("zoomed"),
+            lambda: self.attributes("-zoomed", True),
+        ):
+            try:
+                method()
+                return
+            except tk.TclError:
+                continue
+        width = self.winfo_screenwidth()
+        height = self.winfo_screenheight()
+        self.geometry(f"{width}x{height}")
 
     def _setup_styles(self):
         s = ttk.Style(self)
@@ -349,19 +381,21 @@ class UtilityGUI(tk.Tk):
             self.reliability_button.config(text="System Reliability ▾")
         self.reliability_submenu_visible = not self.reliability_submenu_visible
 
+    def set_selected_database(self, _index: int):
+        """Placeholder retained for compatibility."""
+        return
+
 # ---------- APP CONTROLLER ----------
 class UtilityApp:
     def __init__(self):
         self.db = DatabaseManager()
-        try:
-            self.db.connect()
-        except Exception as e:
-            messagebox.showerror("Connection Error", str(e))
+        self.db.connect()
 
         self.alarms = AlarmUtility(self.db)
         self.tables = TableUtility(self.db)
         self.devices = DeviceHealthUtility(self.db)
         self.gui = UtilityGUI(self)
+        self.gui.conn_label.config(text="Data: Local SQL dumps")
 
         self.show_active_alarms()
 
@@ -373,15 +407,16 @@ class UtilityApp:
     def _load_active_alarms(self):
         try:
             rows = self.alarms.get_active()
-            now = datetime.now()
+            now = datetime.utcnow()
             formatted = []
             for r in rows:
-                activated = r[4]
-                duration = now - activated
-                days = duration.days
-                hours, rem = divmod(duration.seconds, 3600)
+                activated = _parse_timestamp(r[4])
+                duration = now - activated if activated else None
+                days = duration.days if duration else 0
+                seconds = duration.seconds if duration else 0
+                hours, rem = divmod(seconds, 3600)
                 mins = rem // 60
-                duration_str = f"{days}d {hours}h {mins}m"
+                duration_str = f"{days}d {hours}h {mins}m" if duration else "N/A"
                 formatted.append((*r[:5], duration_str, r[7]))
         except Exception as e:
             self._show_error(str(e))
@@ -434,7 +469,12 @@ class UtilityApp:
         except Exception as e:
             self._show_error(str(e))
             return
-        self._populate_tree(rows, ("Device ID", "Device Name", "Status", "Last Checked"))
+        formatted = []
+        for r in rows:
+            modem = "Yes" if str(r[3]).strip() == "1" else "No"
+            switcher = "Yes" if str(r[4]).strip() == "1" else "No"
+            formatted.append((r[0], r[1], r[2], modem, switcher))
+        self._populate_tree(formatted, ("Device ID", "Device Name", "Type", "Leave Modem On", "Leave Switcher Off"))
 
     # ---- System Reliability View----
     def show_system_reliability(self):

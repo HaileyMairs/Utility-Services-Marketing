@@ -1,3 +1,5 @@
+__pycache__/
 .idea/
 .venv/
 AGENTS.md
+python/sql_data/.local_sql_cache*.db

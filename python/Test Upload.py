@@ -38,7 +38,7 @@ class DeviceHealthUtility:
 
     IMPORTANT:
         Replace the placeholder table name below (dbo.DeviceBatteryHistory)
-        with whatever table in the MCRWS-Telog database actually contains
+        with whatever table in the telemetry dumps actually contains
         voltage or device reading timestamps. I coded assuming generic names
         so the GUI doesn’t break.
     """
