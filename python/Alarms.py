@@ -3,79 +3,121 @@
 #btn: 'Repeated'
 #btn: 'Orphan'
 
-import pyodbc
-from datetime import datetime, timedelta
+from datetime import datetime
 
-SQL_SERVER = "HAILEY"
-DATABASE = "MCRWS-Telog"
+from local_sql_loader import LocalSqlDatabase
+
 
 class AlarmUtility:
-    def __init__(self):
-        self.conn = self.connect_db()
-
-    def connect_db(self):
-        """Connect to SQL Server using ODBC."""
-        conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={SQL_SERVER};DATABASE={DATABASE};Trusted_Connection=yes;"
-        try:
-            return pyodbc.connect(conn_str, autocommit=True, timeout=5)
-        except pyodbc.Error:
-            # fallback to ODBC Driver 18
-            conn_str = conn_str.replace("ODBC Driver 17", "ODBC Driver 18")
-            return pyodbc.connect(conn_str, autocommit=True, timeout=5)
+    def __init__(self, db: LocalSqlDatabase | None = None):
+        self.db = db or LocalSqlDatabase()
 
     def query(self, sql, params=None):
-        """Run a read-only query."""
-        cur = self.conn.cursor()
-        cur.execute(sql, params or [])
-        return cur.fetchall()
+        return self.db.query(sql, params)
+
+    def _parse_timestamp(self, value):
+        if not value or value in ("NULL", "null"):
+            return None
+        if isinstance(value, datetime):
+            return value
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(str(value), fmt)
+            except ValueError:
+                continue
+        return None
+
+    def _format_duration(self, delta: timedelta | None):
+        if not delta:
+            return "N/A"
+        seconds = int(delta.total_seconds())
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        mins = rem // 60
+        return f"{days}d {hours}h {mins}m"
 
     # ---------------- ALARMS ----------------
     def get_active(self):
-        sql = """
-        SELECT alarm_history_id, alarm_source_id, alarm_name, site_id, 
-               alarm_activation_time, alarm_deactivation_time, alarm_active, alarm_title
+        base_sql = """
+        SELECT alarm_history_id,
+               alarm_source_id,
+               alarm_name,
+               site_id,
+               alarm_activation_time,
+               alarm_deactivation_time,
+               alarm_active,
+               alarm_title
         FROM dbo.alarm_history
-        WHERE alarm_active = 1
-        ORDER BY alarm_activation_time DESC;
+        WHERE IFNULL(alarm_active, '0') = '1'
+              OR alarm_deactivation_time IS NULL
+              OR alarm_deactivation_time = ''
+              OR UPPER(alarm_deactivation_time) = 'NULL'
+        ORDER BY datetime(alarm_activation_time) DESC
+        LIMIT 200;
         """
-        rows = self.query(sql)
-        now = datetime.now()
+        rows = self.query(base_sql)
+        if not rows:
+            rows = self.query(
+                """
+                SELECT alarm_history_id,
+                       alarm_source_id,
+                       alarm_name,
+                       site_id,
+                       alarm_activation_time,
+                       alarm_deactivation_time,
+                       alarm_active,
+                       alarm_title
+                FROM dbo.alarm_history
+                ORDER BY datetime(alarm_activation_time) DESC
+                LIMIT 200;
+                """
+            )
+        now = datetime.utcnow()
         formatted = []
         for r in rows:
-            activated = r[4]
-            duration = now - activated
-            duration_str = f"{duration.days}d {duration.seconds//3600}h {(duration.seconds//60)%60}m"
-            formatted.append((r[0], r[1], r[2], r[3], r[4], duration_str, r[7]))
+            activated = self._parse_timestamp(r[4])
+            duration = self._format_duration(now - activated if activated else None)
+            formatted.append((r[0], r[1], r[2], r[3], r[4], duration, r[7]))
         columns = ("ID", "Source", "Name", "SiteID", "Activated", "Duration", "Title")
         return columns, formatted
 
     def get_repeated(self):
-        one_week_ago = datetime.now() - timedelta(days=7)
         sql = """
-        SELECT alarm_name, site_id, COUNT(*) AS occ_count, MAX(alarm_activation_time), MAX(alarm_title)
+        SELECT alarm_name,
+               site_id,
+               COUNT(*) AS occ_count,
+               MAX(alarm_activation_time) AS last_activated,
+               MAX(alarm_title) AS alarm_title
         FROM dbo.alarm_history
-        WHERE alarm_activation_time >= ?
         GROUP BY alarm_name, site_id
         HAVING COUNT(*) >= 2
-        ORDER BY occ_count DESC;
+        ORDER BY occ_count DESC, datetime(last_activated) DESC
+        LIMIT 200;
         """
-        rows = self.query(sql, [one_week_ago])
+        rows = self.query(sql)
         formatted = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
         columns = ("Alarm Name", "Site", "Occurrences", "Last Activated", "Title")
         return columns, formatted
 
     def get_orphan(self):
         sql = """
-        SELECT ah.alarm_history_id, ah.alarm_source_id, ah.alarm_name, ah.site_id, 
-               ah.alarm_activation_time, ah.alarm_deactivation_time, 
-               ah.alarm_system_time, ah.alarm_title
+        SELECT ah.alarm_history_id,
+               ah.alarm_source_id,
+               ah.alarm_name,
+               ah.site_id,
+               ah.alarm_activation_time,
+               ah.alarm_system_time,
+               ah.alarm_title
         FROM dbo.alarm_history AS ah
-        LEFT JOIN dbo.sites AS s ON ah.site_id = s.site_id
+        LEFT JOIN dbo.sites_table AS s ON ah.site_id = s.site_id
         WHERE s.site_id IS NULL
-        ORDER BY ah.alarm_activation_time DESC;
+               OR ah.measurement_id IS NULL
+               OR UPPER(ah.measurement_id) = 'NULL'
+        ORDER BY datetime(ah.alarm_activation_time) DESC
+        LIMIT 200;
         """
         rows = self.query(sql)
-        formatted = [(r[0], r[1], r[2], r[3], r[4], r[6], r[7]) for r in rows]
+        formatted = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6]) for r in rows]
         columns = ("ID", "Source", "Name", "SiteID", "Activated", "System Time", "Title")
         return columns, formatted
 
