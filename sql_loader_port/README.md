@@ -7,5 +7,5 @@ This version of the main program loads .sql files contained within the sql_data/
 ## Usage (in contrast to HaileyGUI)
 
 1. Export any databases you want to use as .sql files and drop them in sql_data/
-2. Run the program. The first run will take a while depending on how large the .sql files are. Don't interrupt it as it's creating caches that it will use on subsequent runs instead of the .sql files.
-3. Any subsequent runs should be instant.
+2. Run main.py. The first run will take a while depending on how large the .sql files are. Don't interrupt it as it's creating caches that it will use on subsequent runs instead of the .sql files.
+3. Any subsequent runs should be instantaneous.
