@@ -23,6 +23,7 @@ Tables w/o Info
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
+import sys
 from datetime import datetime
 
 from local_sql_loader import LocalSqlDatabase
@@ -521,5 +522,15 @@ class UtilityApp:
 
 
 if __name__ == "__main__":
-    app = UtilityApp()
+    try:
+        app = UtilityApp()
+    except FileNotFoundError as exc:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showwarning(
+            "Missing SQL data",
+            f"{exc}\n\nDrop at least one .sql file into sql_data/ and restart the tool.",
+        )
+        root.destroy()
+        sys.exit(0)
     app.gui.mainloop()
