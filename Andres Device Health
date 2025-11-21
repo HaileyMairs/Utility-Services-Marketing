@@ -6,6 +6,34 @@
 #btn: 'Battery Health'
 #btn: 'Offline Devices'
 
+'''
+NOTE FOR TEAM — DEVICE HEALTH EXPECTATIONS
+------------------------------------------
+You will MOST LIKELY see **no results** from both:
+
+    get_battery_health()
+    get_offline_devices()
+
+This is NOT an error in the code.
+
+Reason:
+The table I wrote queries against — dbo.DeviceBatteryHistory —
+does NOT exist in our MCRWS-Telog database provided to us.
+It was a placeholder name because the real voltage / battery tables
+were never identified or included in the data drop.
+
+Because of that:
+    • queries safely return []
+    • the GUI will show an empty table
+    • this is expected and NOT a malfunction
+
+If the client provides the real battery/voltage history table later,
+we can plug it in and these functions will immediately work.
+
+Just letting everyone know so the team doesn’t think this section is broken.
+'''
+
+
 class DeviceHealthUtility:
     """
     Provides:
