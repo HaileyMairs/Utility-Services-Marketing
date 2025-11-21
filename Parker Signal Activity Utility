@@ -1,0 +1,226 @@
+''' ======================================================================
+                         SIGNAL ACTIVITY UTILITY
+ ======================================================================'''
+
+#title: 'Signal Activity'
+#btn: 'High Runtime Signals'
+#btn: 'Flatlined Signals'
+
+"""
+NOTE FOR TEAM — REAL TELOG TABLE USAGE
+--------------------------------------
+This module ONLY uses a table we KNOW exists in the Telog database
+export: trend_data (from MCRWS-Telog).
+
+From the CSV, each row looks like:
+
+    1_0GP,2010-08-10 15:45:00.000,3600,1,6.460,6.460,6.460
+
+Which implies columns similar to:
+
+    signal_id         (e.g., '1_0GP')
+    sample_time       (datetime)
+    sample_interval   (seconds, e.g. 3600)
+    quality_flag      (int)
+    min_value         (numeric)
+    avg_value         (numeric)
+    max_value         (numeric)
+
+IMPORTANT:
+    The EXACT column NAMES in SQL Server may differ from the CSV.
+
+What this utility provides:
+
+    get_high_runtime_signals(days_back=7, min_active_pct=0.5)
+        -> Signals that are "active" (value != 0) for a large fraction
+           of time. Likely pumps/controls that run a lot, heaters, etc.
+
+    get_flatlined_signals(days_back=30, max_stddev=0.0001)
+        -> Signals whose values barely change -> possible dead/bad sensors,
+           frozen tags, or misconfigured channels.
+
+Both metrics are built from REAL data, using ONLY trend_data.
+"""
+
+
+class SignalActivityUtility:
+    """
+    Provides:
+        get_high_runtime_signals()
+        get_flatlined_signals()
+
+    Uses self.db.query(sql) and returns [] on failure so the GUI
+    doesn't crash if column names need to be adjusted.
+    """
+
+    def __init__(self, db):
+        self.db = db
+
+        # ---- TABLE & COLUMN MAPPINGS ----
+        # You MUST adjust these to match dbo.trend_data columns in SQL Server.
+
+        self.trend_table = "dbo.trend_data"
+
+        # From your CSV, first column is like '1_0GP' -> logical "signal" or "tag" id
+        self.col_signal_id   = "signal_id"          # e.g. '1_0GP'
+        self.col_time        = "sample_time"        # datetime
+        self.col_interval    = "sample_interval"    # in seconds (optional but helpful)
+        # We'll treat this as the main numeric value:
+        self.col_value       = "avg_value"          # numeric, can be min/avg/max or a single reading
+
+    # ------------------------------------------------------------------
+    # 1) High Runtime Signals
+    # ------------------------------------------------------------------
+    def get_high_runtime_signals(self, days_back=7, min_active_pct=0.5):
+        """
+        Identifies signals that are "active" (value != 0) for a large
+        fraction of samples in the last N days.
+
+        This is helpful to:
+            - Find always-on signals (e.g., pumps that almost never stop)
+            - Detect controls that are effectively "stuck on"
+            - Spot tags that constantly read non-zero
+
+        Output columns (conceptually):
+            signal_id
+            sample_count
+            active_count
+            active_pct
+            min_value
+            max_value
+            avg_value
+        """
+        sql = f"""
+        WITH Recent AS (
+            SELECT
+                {self.col_signal_id}  AS signal_id,
+                {self.col_time}       AS sample_time,
+                {self.col_value}      AS value
+            FROM {self.trend_table}
+            WHERE {self.col_time} >= DATEADD(DAY, -{days_back}, GETDATE())
+        ),
+        Agg AS (
+            SELECT
+                signal_id,
+                COUNT(*)                                     AS sample_count,
+                SUM(CASE WHEN value IS NOT NULL AND value <> 0 THEN 1 ELSE 0 END) AS active_count,
+                MIN(value)                                   AS min_value,
+                MAX(value)                                   AS max_value,
+                AVG(CAST(value AS FLOAT))                    AS avg_value
+            FROM Recent
+            GROUP BY signal_id
+        )
+        SELECT
+            signal_id,
+            sample_count,
+            active_count,
+            CAST(active_count * 1.0 / NULLIF(sample_count, 0) AS DECIMAL(10,4)) AS active_pct,
+            min_value,
+            max_value,
+            avg_value
+        FROM Agg
+        WHERE (active_count * 1.0 / NULLIF(sample_count, 0)) >= {min_active_pct}
+        ORDER BY active_pct DESC, sample_count DESC;
+        """
+        try:
+            return self.db.query(sql)
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------
+    # 2) Flatlined Signals
+    # ------------------------------------------------------------------
+    def get_flatlined_signals(self, days_back=30, max_stddev=0.0001):
+        """
+        Identifies signals that barely change over the last N days.
+
+        These are often:
+            - Dead sensors
+            - Frozen PLC tags
+            - Misconfigured channels (constant 0, 65,535, -9999, etc.)
+            - "Stale" signals in the SCADA / telemetry layer
+
+        Output columns:
+            signal_id
+            sample_count
+            min_value
+            max_value
+            avg_value
+            stddev_value
+        """
+        sql = f"""
+        WITH Recent AS (
+            SELECT
+                {self.col_signal_id}  AS signal_id,
+                {self.col_value}      AS value
+            FROM {self.trend_table}
+            WHERE {self.col_time} >= DATEADD(DAY, -{days_back}, GETDATE())
+        ),
+        Agg AS (
+            SELECT
+                signal_id,
+                COUNT(*)                                       AS sample_count,
+                MIN(value)                                     AS min_value,
+                MAX(value)                                     AS max_value,
+                AVG(CAST(value AS FLOAT))                      AS avg_value,
+                STDEV(CAST(value AS FLOAT))                    AS stddev_value
+            FROM Recent
+            GROUP BY signal_id
+        )
+        SELECT
+            signal_id,
+            sample_count,
+            min_value,
+            max_value,
+            avg_value,
+            stddev_value
+        FROM Agg
+        WHERE
+            sample_count > 0
+            AND ISNULL(stddev_value, 0) <= {max_stddev}
+        ORDER BY sample_count DESC;
+        """
+        try:
+            return self.db.query(sql)
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------
+    # Formatting helpers for GUI treeviews
+    # ------------------------------------------------------------------
+    def format_high_runtime_for_treeview(self, rows):
+        """
+        Expects rows from get_high_runtime_signals().
+        Each row: (signal_id, sample_count, active_count, active_pct, min, max, avg)
+        """
+        formatted = []
+        for r in rows:
+            signal_id, sample_count, active_count, active_pct, vmin, vmax, vavg = r
+            formatted.append([
+                str(signal_id),
+                str(sample_count or 0),
+                str(active_count or 0),
+                f"{active_pct:.2%}" if active_pct is not None else "0.00%",
+                f"{vmin:.3f}" if vmin is not None else "",
+                f"{vmax:.3f}" if vmax is not None else "",
+                f"{vavg:.3f}" if vavg is not None else "",
+            ])
+        return formatted
+
+    def format_flatlined_for_treeview(self, rows):
+        """
+        Expects rows from get_flatlined_signals().
+        Each row: (signal_id, sample_count, min_value, max_value, avg_value, stddev_value)
+        """
+        formatted = []
+        for r in rows:
+            signal_id, sample_count, vmin, vmax, vavg, vstd = r
+            formatted.append([
+                str(signal_id),
+                str(sample_count or 0),
+                f"{vmin:.3f}" if vmin is not None else "",
+                f"{vmax:.3f}" if vmax is not None else "",
+                f"{vavg:.3f}" if vavg is not None else "",
+                f"{vstd:.5f}" if vstd is not None else "",
+            ])
+        return formatted
