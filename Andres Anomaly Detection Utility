@@ -10,6 +10,9 @@ class AnomalyDetectionUtility:
     def __init__(self, db):
         self.db = db
 
+    # ------------------------------------------------------------------
+    # Main SQL logic 
+    # ------------------------------------------------------------------
     def find_anomalies(self, table, column, z_threshold=3.0):
         sql = f"""
         WITH stats AS (
@@ -35,3 +38,52 @@ class AnomalyDetectionUtility:
 
     def format_anomalies(self, rows):
         return [[str(x) for x in r] for r in rows[:50]]
+
+    # ==================================================================
+    #                     BUTTON GETTER (REQUIRED FORMAT)
+    # ==================================================================
+    def get_run_anomaly_detection(self):
+        """
+        Getter for the 'Run Anomaly Detection' button.
+
+        IMPORTANT:
+            - This getter MUST return (columns, rows)
+            - The GUI will inject table/column/z_threshold into the utility
+              before calling this function.
+
+        The GUI will store the selected:
+            self.table
+            self.column
+            self.z_threshold
+        before triggering this getter.
+
+        If no data exists or table is missing → returns empty table.
+        """
+
+        # ---- Validate user selections ----
+        try:
+            table = self.table
+            column = self.column
+            z = float(self.z_threshold)
+        except AttributeError:
+            # GUI did not set the required attributes yet
+            return ("Error",), [("Missing table or column selection.",)]
+
+        except ValueError:
+            # Invalid Z threshold
+            return ("Error",), [("Z threshold must be numeric.",)]
+
+        # ---- Execute anomaly detection ----
+        rows = self.find_anomalies(table, column, z_threshold=z)
+
+        if not rows:
+            return ("Message",), [("No anomalies detected or table missing.",)]
+
+        # Convert to strings for display
+        formatted = self.format_anomalies(rows)
+
+        # Auto-generate dynamic column headers
+        col_count = len(formatted[0])
+        columns = tuple(f"Col {i+1}" for i in range(col_count))
+
+        return columns, formatted
