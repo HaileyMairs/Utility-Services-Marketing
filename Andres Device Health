@@ -1,36 +1,27 @@
 ''' ======================================================================
                     DEVICE HEALTH UTILITY
- ======================================================================'''
+ ======================================================================
 
 #title: 'Device Health'
 #btn: 'Battery Health'
 #btn: 'Offline Devices'
 
-'''
 NOTE FOR TEAM — DEVICE HEALTH EXPECTATIONS
 ------------------------------------------
-You will MOST LIKELY see **no results** from both:
+Both queries below normally read from:
 
-    get_battery_health()
-    get_offline_devices()
+    dbo.DeviceBatteryHistory
 
-This is NOT an error in the code.
-
-Reason:
-The table I wrote queries against — dbo.DeviceBatteryHistory —
-does NOT exist in our MCRWS-Telog database provided to us.
-It was a placeholder name because the real voltage / battery tables
-were never identified or included in the data drop.
+But this table DOES NOT exist in the MCRWS-Telog dataset we received.
 
 Because of that:
-    • queries safely return []
-    • the GUI will show an empty table
-    • this is expected and NOT a malfunction
+    • get_battery_health() returns []
+    • get_offline_devices() returns []
+    • GUI will show empty tables (EXPECTED)
+    • This does NOT mean anything is broken
 
-If the client provides the real battery/voltage history table later,
-we can plug it in and these functions will immediately work.
-
-Just letting everyone know so the team doesn’t think this section is broken.
+Once the real voltage/battery table name is provided by the client,
+these functions will work immediately without modification.
 '''
 
 
@@ -39,11 +30,20 @@ class DeviceHealthUtility:
     Provides:
         get_battery_health()
         get_offline_devices()
+
+    Also includes GUI getter functions:
+        get_battery_health_button()
+        get_offline_devices_button()
+
     All getters follow teammate snake_case format.
     """
 
     def __init__(self, db):
         self.db = db
+
+    # ------------------------------------------------------------------
+    # Core SQL Functions
+    # ------------------------------------------------------------------
 
     def get_battery_health(self):
         sql = """
@@ -55,7 +55,7 @@ class DeviceHealthUtility:
                 AVG(CAST(ISNULL(battery_voltage, 0.0) AS FLOAT)) AS avg_voltage,
                 MIN(CAST(ISNULL(battery_voltage, 0.0) AS FLOAT)) AS min_voltage,
                 MAX(CAST(ISNULL(battery_voltage, 0.0) AS FLOAT)) AS max_voltage
-            FROM dbo.DeviceBatteryHistory
+            FROM dbo.DeviceBatteryHistory   -- PLACEHOLDER TABLE
             GROUP BY site_id, device_id
         )
         SELECT
@@ -75,7 +75,8 @@ class DeviceHealthUtility:
         """
         try:
             return self.db.query(sql)
-        except Exception:return []
+        except Exception:
+            return []   # expected: table does not exist
 
     def get_offline_devices(self, days_offline=7):
         sql = f"""
@@ -83,7 +84,7 @@ class DeviceHealthUtility:
             site_id,
             device_id,
             MAX(sample_time) AS last_seen
-        FROM dbo.DeviceBatteryHistory
+        FROM dbo.DeviceBatteryHistory   -- PLACEHOLDER TABLE
         GROUP BY site_id, device_id
         HAVING DATEDIFF(DAY, MAX(sample_time), GETDATE()) >= {days_offline}
         ORDER BY last_seen ASC;
@@ -91,7 +92,11 @@ class DeviceHealthUtility:
         try:
             return self.db.query(sql)
         except Exception:
-            return []
+            return []   # expected: table does not exist
+
+    # ------------------------------------------------------------------
+    # Formatting Helpers
+    # ------------------------------------------------------------------
 
     def format_battery_for_treeview(self, rows):
         formatted = []
@@ -118,3 +123,48 @@ class DeviceHealthUtility:
                 str(last_seen),
             ])
         return formatted
+
+    # ==================================================================
+    #                   BUTTON GETTERS (REQUIRED FORMAT)
+    # ==================================================================
+
+    def get_battery_health_button(self):
+        """
+        Getter for the 'Battery Health' button.
+        MUST return (columns, rows)
+        """
+
+        try:
+            rows = self.get_battery_health()
+            formatted = self.format_battery_for_treeview(rows)
+        except Exception:
+            columns = ("Error",)
+            return columns, [("Battery health query failed.",)]
+
+        columns = (
+            "Site ID",
+            "Device ID",
+            "Last Seen",
+            "Avg Voltage",
+            "Min Voltage",
+            "Max Voltage",
+            "Health Status",
+        )
+
+        return columns, formatted
+
+    def get_offline_devices_button(self):
+        """
+        Getter for the 'Offline Devices' button.
+        MUST return (columns, rows)
+        """
+
+        try:
+            rows = self.get_offline_devices()
+            formatted = self.format_offline_for_treeview(rows)
+        except Exception:
+            columns = ("Error",)
+            return columns, [("Offline device query failed.",)]
+
+        columns = ("Site ID", "Device ID", "Last Seen")
+        return columns, formatted
