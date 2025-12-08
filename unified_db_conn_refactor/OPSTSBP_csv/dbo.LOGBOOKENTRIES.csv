@@ -1,0 +1,4 @@
+AUDITUSER,AUDITTIMESTAMP,ID,LBID,DATESTAMP,TIMESTAMP,COMMENT,FLAG,TYPE,UD1,UD2,UD3,UD4,UD5,RIOID
+---------,--------------,--,----,---------,---------,-------,----,----,---,---,---,---,---,-----
+rhtrinity,"2025-08-25 12:27:35.743",1,0,"2025-08-23 00:00:00.000","1899-12-30 02:00:00.000","This microphone means that I don’t actually have to sit here and use my thumbs to enter my entry. I can just start talking to my phone and get my logbook entry in.",NULL,NULL,NULL,NULL,NULL,NULL,NULL,1C450727-3BA7-4DED-F790-08DDB4524457
+rhtrinity,"2025-08-25 12:42:38.150",2,0,"2025-08-25 00:00:00.000","1899-12-30 12:40:00.000"," (RH) THis is the appended note",NULL,NULL,NULL,NULL,NULL,NULL,NULL,D3688CB8-17D0-4872-A771-08DDE467A465

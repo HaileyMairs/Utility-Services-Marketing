@@ -1,0 +1,14 @@
+AUDITUSER,AUDITTIMESTAMP,ID,AREANAME,AREADESC,RECORDER
+---------,--------------,--,--------,--------,--------
+NARANJODL,"2025-03-12 11:27:33.000",1,"TRA CRP","TRA CRP Stations",2
+NARANJODL,"2025-03-12 11:27:33.000",2,Sonde,"Sonde Equipment",1
+NARANJODL,"2025-03-12 11:33:07.000",3,"TRA Joe Pool","TRA Joe Pool Lake and Streams Stations",13
+NARANJODL,"2025-03-12 11:29:13.000",4,"TRA NR Baseline ROCRWS","TRA Northern Region baseline for Red Oak",14
+NARANJODL,"2025-03-12 11:29:40.000",5,"TRA NR Baseline DCRWS","TRA Northern Region baseline for Denton Creek",15
+NARANJODL,"2025-03-12 11:30:00.000",6,"TRA NR Baseline MCRWS","TRA Northern Region baseline for Mountain Creek",16
+NARANJODL,"2025-03-13 08:59:57.000",7,"TRA LLP","TRA Lake Livingston",17
+NARANJODL,"2025-03-12 11:32:56.000",8,"City of Arlington CRP","City of Arlington CRP Stations",18
+NARANJODL,"2025-03-12 11:33:30.000",9,"City of Dallas CRP","City of Dallas CRP Stations",19
+NARANJODL,"2025-03-12 11:33:56.000",10,"City of Grand Prairie CRP","City of Grand Prairie CRP Stations",20
+NARANJODL,"2025-03-12 11:34:16.000",11,"City of Irving CRP","City of Irving CRP Stations",21
+NARANJODL,"2025-03-12 11:34:55.000",12,"Upper TRWD CRP","Upper Trinity Regional Water District CRP Stations",22

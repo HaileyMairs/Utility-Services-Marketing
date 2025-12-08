@@ -1,0 +1,2 @@
+AUDITUSER,AUDITTIMESTAMP,ID,ACTIVE,OVERRIDDEN,SQL,NAME,FC1EXIST,FC2EXIST,FC3EXIST,FC1OPTION,FC2OPTION,FC3OPTION,FC1BY,FC2BY,FC3BY,FC1OP,FC2OP,FC3OP,FC1VALUE,FC2VALUE,FC3VALUE,SORTFIELD1,SORTFIELD2,SORTFIELD3
+---------,--------------,--,------,----------,---,----,--------,--------,--------,---------,---------,---------,-----,-----,-----,-----,-----,-----,--------,--------,--------,----------,----------,----------

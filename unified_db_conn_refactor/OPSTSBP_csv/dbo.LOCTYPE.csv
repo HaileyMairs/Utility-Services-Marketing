@@ -1,0 +1,5 @@
+AUDITUSER,AUDITTIMESTAMP,ID,LOCTYPE,LOCTYPEDESC,RECORDER,SHOW0,SHOW1,SHOW2,SHOW3,SHOW4,SHOW5,SHOW6,SHOW7,SHOW8,SHOW9,SHOW10,SHOW11,SHOW12,SHOW13,SHOW14,SHOW15,SHOW16,SHOW17,SHOW18,SHOW19,SHOW20
+---------,--------------,--,-------,-----------,--------,-----,-----,-----,-----,-----,-----,-----,-----,-----,-----,------,------,------,------,------,------,------,------,------,------,------
+NARANJODL,"2025-03-12 11:24:34.000",1,"CRP Equipment","Equipment used for CRP",11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+NARANJODL,"2025-03-12 11:25:24.000",2,"CRP Resevior","Reseviors in CRP Sample Plan",12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+NARANJODL,"2025-03-12 11:25:20.000",3,"CRP Streams","Streams used in CRP Sample Plan",13,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1

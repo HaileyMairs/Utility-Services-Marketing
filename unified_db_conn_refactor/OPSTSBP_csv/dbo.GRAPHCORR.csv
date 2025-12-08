@@ -1,0 +1,2 @@
+AUDITUSER,AUDITTIMESTAMP,ID,TITLE,HEADING,HEADING2,STARTDATE,ENDDATE,VARIDIND,VARIDDEP,INDLWRLIMIT,INDUPRLIMIT,DEPLWRLIMIT,DEPUPRLIMIT,OFFSET,PLOTLIN,PLOTGEO,PLOTEXPO,PLOT3RDORD,YTITLE,XTITLE,CORRNUM,CORRTEXT,CORRYESNO,DBLINDLWRLIMIT,DBLINDUPRLIMIT,DBLDEPLWRLIMIT,DBLDEPUPRLIMIT,GGROUPID
+---------,--------------,--,-----,-------,--------,---------,-------,--------,--------,-----------,-----------,-----------,-----------,------,-------,-------,--------,----------,------,------,-------,--------,---------,--------------,--------------,--------------,--------------,--------

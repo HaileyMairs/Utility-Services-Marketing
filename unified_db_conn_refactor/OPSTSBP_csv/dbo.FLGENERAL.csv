@@ -1,0 +1,2 @@
+AUDITUSER,AUDITTIMESTAMP,PERMITNUMBER,PERMITNAME,MAILADDRESS,MAILCITY,MAILZIP,FACILITY,LOCATION,LOCATIONCITY,COUNTY,LIMIT,REPORT,CLASS,GROUPNUM,FACILITYID,GMSIDNO,DEPADDR,DOA,DOB,DOC,DOD
+---------,--------------,------------,----------,-----------,--------,-------,--------,--------,------------,------,-----,------,-----,--------,----------,-------,-------,---,---,---,---

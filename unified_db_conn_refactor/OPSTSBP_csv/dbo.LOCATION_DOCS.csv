@@ -1,0 +1,44 @@
+AUDITUSER,AUDITTIMESTAMP,ID,LOCID,DESCRIPTION,FILEEXT
+---------,--------------,--,-----,-----------,-------
+NARANJODL,"2024-07-09 10:23:36.857",4,8,JoePool_Permits_08_3404ABCD,PDF
+NARANJODL,"2024-07-09 10:23:05.813",3,12,JoePool_Contract_Midlothian_2021,PDF
+RUSTAF,"2024-07-11 09:01:38.953",5,13,JoePool_Contract_GrandPrairie_1975,PDF
+RUSTAF,"2024-07-11 09:04:04.037",6,14,JoePool_Contract_Duncanville_1975,PDF
+RUSTAF,"2024-07-11 09:04:37.227",7,14,JoePool_Contract_Duncanville_1975_Amendment_2002,PDF
+RUSTAF,"2024-07-24 14:21:46.700",28,9,NavarrooMills_PermitNo_1948AB,PDF
+RUSTAF,"2024-07-24 14:44:04.847",29,9,NavarroMills_Permit_Superock_CP-195,PDF
+RUSTAF,"2024-07-24 14:44:49.957",30,29,NavarroMills_Contract_Corsicana_1959,PDF
+RUSTAF,"2024-07-24 14:45:09.753",31,29,NavarroMills_Contract_Corsicana_1959_Modification_1961,PDF
+RUSTAF,"2024-07-24 14:45:31.160",32,29,NavarroMills_Contract_Corsicana_1959_Modification_1965,PDF
+RUSTAF,"2024-07-24 14:48:59.887",33,30,NavarroMills_Contract_Superock_1972,PDF
+RUSTAF,"2024-07-11 09:05:19.900",8,15,JoePool_Contract_CedarHill_1975,PDF
+RUSTAF,"2024-07-11 09:13:04.150",9,11,LLP_Permits_08_4248ABCDEF,PDF
+RUSTAF,"2024-07-11 09:13:40.710",10,11,LLP_Permit_08_4248_WallisvilleCancellationOrder_2009,PDF
+RUSTAF,"2024-07-11 09:15:22.197",11,11,LLP_Permits_08_4248_DalworthingtonGardens_13199,PDF
+RUSTAF,"2024-07-24 15:28:29.973",35,16,LLP_Contract_CityofTrinityTCRWSS_2021,PDF
+RUSTAF,"2024-07-11 09:23:35.917",13,17,LLP_Contract_WaterwoodMUD_2003,PDF
+RUSTAF,"2024-07-11 09:24:11.260",14,17,LLP_Contract_WaterwoodMUD_2003_Amend_1_2017,PDF
+RUSTAF,"2024-07-11 09:25:04.877",15,18,LLP_Contract_CityofLivingstonLRWSS_2020,PDF
+RUSTAF,"2024-07-11 09:25:39.343",16,19,LLP_Contract_LakeLivingstonWaterSupplySewerServiceCorp_2007,PDF
+RUSTAF,"2024-07-11 09:35:25.603",17,20,LLP_Contract_TrinityRuralWaterSupplyCorp_2006,PDF
+RUSTAF,"2024-07-11 09:35:51.553",18,20,LLP_Contract_TrinityRuralWaterSupplyCorp_2006_Amend_1_2008,PDF
+RUSTAF,"2024-07-11 09:36:32.090",19,21,LLP_Contract_WaterwoodNationalResort_2023,PDF
+RUSTAF,"2024-07-11 09:37:29.540",20,22,LLP_Contract_WhisperingPinesGolfClub_2023,PDF
+RUSTAF,"2024-07-11 09:41:37.010",21,23,LLP_Contract_MemorialPointTownhouseAssociation_2020,PDF
+RUSTAF,"2024-07-11 09:43:01.923",22,24,LLP_Contract_JohnWDalton_2022,PDF
+RUSTAF,"2024-07-11 09:43:35.037",23,25,LLP_Contract_SidneySmith_2024,PDF
+RUSTAF,"2024-07-24 15:27:05.303",34,27,LLP_Contract_CityofHuntsvillleHRWSS_2021,PDF
+RUSTAF,"2024-07-24 15:37:39.773",36,37,LLP_Contract_WestwoodShoresPOA_2023,PDF
+RUSTAF,"2024-07-24 15:38:35.880",37,38,LLP_Contract_DalworthingtonGardens_2020,PDF
+RUSTAF,"2024-07-24 15:42:09.503",38,26,LLP_Contract_RedtownRanchHoldings_2023,PDF
+RUSTAF,"2024-07-24 15:45:02.697",39,28,LLP_Contract_CityofHouston_2016,PDF
+RUSTAF,"2024-07-24 15:53:21.563",40,10,Bardwell_PermitNo_2068_1963,PDF
+RUSTAF,"2024-07-24 15:56:33.390",41,31,Bardwell_Contract_CityofEnnis_1963,PDF
+RUSTAF,"2024-07-24 15:58:32.803",42,31,Bardwell_Contract_CityofEnnis_1963_Amendatory_1964,PDF
+RUSTAF,"2024-07-24 15:58:47.357",43,31,Bardwell_Contract_CityofEnnis_1963_Amendment_1969,PDF
+RUSTAF,"2024-07-24 15:59:14.920",44,32,Bardwell_Contract_EllisCoWaterControlDist_1972,PDF
+RUSTAF,"2024-08-13 14:05:33.640",45,40,Cedar_Richland_Contract_FreestonePower_2000,PDF
+RUSTAF,"2024-08-13 14:06:04.640",46,40,Cedar_Richland_Contract_FreestonePower_2000_Amend_1_2001,PDF
+RUSTAF,"2024-08-13 14:06:25.850",47,40,CedarRicahland_Contract_FreestonePower_2000_Extension_Letter_2019,PDF
+RUSTAF,"2024-08-13 14:06:39.520",48,40,CedarRicahland_Contract_FreestonePower_2000_Rayburn_Consent_2010,PDF
+RUSTAF,"2024-08-15 14:31:08.640",49,45,"City of Houston",PDF
