@@ -1,0 +1,75 @@
+'''
+  12/8/2025
+  used to connect to the database. 
+  ensure this file is in the same file location as main
+  '''
+import tkinter as tk
+from tkinter import ttk, messagebox
+import pyodbc
+
+class SQLLoginWindow(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("SQL Server Login")
+        self.resizable(False, False)
+
+        self.conn = None
+
+        tk.Label(self, text="Server:").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        self.server_entry = tk.Entry(self, width=30)
+        self.server_entry.insert(0, "localhost")
+        self.server_entry.grid(row=0, column=1, padx=6)
+
+        tk.Label(self, text="Authentication:").grid(row=1, column=0, sticky="w", padx=6)
+        self.auth_type = ttk.Combobox(
+            self, values=["Windows Authentication", "SQL Server Authentication"], state="readonly", width=27
+        )
+        self.auth_type.current(0)
+        self.auth_type.grid(row=1, column=1, padx=6)
+        self.auth_type.bind("<<ComboboxSelected>>", self.toggle_auth_fields)
+
+        tk.Label(self, text="Username:").grid(row=2, column=0, sticky="w", padx=6)
+        self.username_entry = tk.Entry(self, width=30, state="disabled")
+        self.username_entry.grid(row=2, column=1, padx=6)
+
+        tk.Label(self, text="Password:").grid(row=3, column=0, sticky="w", padx=6)
+        self.password_entry = tk.Entry(self, width=30, show="*", state="disabled")
+        self.password_entry.grid(row=3, column=1, padx=6)
+
+        tk.Button(self, text="Connect", command=self.try_connect).grid(
+            row=4, column=0, columnspan=2, pady=12
+        )
+
+        self.grab_set()
+
+    # Toggle username/password fields
+    def toggle_auth_fields(self, *_):
+        if self.auth_type.get() == "SQL Server Authentication":
+            self.username_entry.config(state="normal")
+            self.password_entry.config(state="normal")
+        else:
+            self.username_entry.config(state="disabled")
+            self.password_entry.config(state="disabled")
+
+    def try_connect(self):
+        server = self.server_entry.get().strip()
+        auth = self.auth_type.get()
+
+        try:
+            if auth == "Windows Authentication":
+                conn_str = f"DRIVER={{SQL Server}};SERVER={server};Trusted_Connection=yes;"
+            else:
+                user = self.username_entry.get().strip()
+                pwd = self.password_entry.get().strip()
+                conn_str = (
+                    f"DRIVER={{SQL Server}};"
+                    f"SERVER={server};UID={user};PWD={pwd};"
+                )
+
+            conn = pyodbc.connect(conn_str)
+            self.conn = conn
+            messagebox.showinfo("Success", "Connected to SQL Server.")
+            self.destroy()
+
+        except Exception as e:
+            messagebox.showerror("Connection Error", str(e))
