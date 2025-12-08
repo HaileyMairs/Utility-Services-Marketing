@@ -1,1 +1,9 @@
+<<<<<<< HEAD
 .idea/
+=======
+__pycache__/
+.idea/
+.venv/
+AGENTS.md
+python/sql_data/.local_sql_cache*.db
+>>>>>>> f16ef1a069cae1b65b9a4e41fa5d389c70d53c4c
