@@ -1,5 +1,0 @@
-AUDITUSER,AUDITTIMESTAMP,ID,EGROUPNAME,OWNERID,PARENTID
----------,--------------,--,----------,-------,--------
-OPSSYS_BD,"2024-02-19 14:00:00.270",1,"Monthly Data Entry",21,NULL
-OPSSYS_BD,"2024-02-19 14:00:00.280",2,"Custom Data Entry",21,NULL
-OPSSYS_BD,"2024-02-19 14:00:00.287",3,"Daily Detail Entry",21,NULL

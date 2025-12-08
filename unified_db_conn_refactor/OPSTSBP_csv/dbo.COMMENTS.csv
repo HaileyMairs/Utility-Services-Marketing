@@ -1,5 +1,0 @@
-AUDITUSER,AUDITTIMESTAMP,DATESTAMP,VARID,COMMENT
----------,--------------,---------,-----,-------
-SPONGEBOBTESTPANTS,"2024-07-15 11:51:42.290","2024-07-15 00:00:00.000",21,"Reviewed number off by 500."
-RUSTAF,"2025-02-24 13:53:26.910","2020-01-31 00:00:00.000",195,"Retrieving data. Wait a few seconds and try to cut or copy again."
-RUSTAF,"2025-02-24 14:34:02.097","2020-02-29 00:00:00.000",49,"Retrieving data. Wait a few seconds and try to cut or copy again."

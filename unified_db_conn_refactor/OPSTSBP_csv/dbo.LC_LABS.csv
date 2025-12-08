@@ -1,4 +1,0 @@
-ID,AUDITUSER,AUDITTIMESTAMP,LABID,NAME,ADDRESS1,ADDRESS2,CITY,STATE,ZIP,PHONE,EMAIL,NOTES
---,---------,--------------,-----,----,--------,--------,----,-----,---,-----,-----,-----
-1,NARANJODL,"2025-08-27 11:27:38.000",TX00014,"RS and C","6500 Singleton Blvd","",Dallas,TX,75212,972-975-4333,labratoryservices@TrinityRA.org,""
-2,NARANJODL,"2025-08-27 11:30:13.000",999999,"Analytical Services Inc","130 Allen Brook Lane","",Williston,VT,05495,800-723-4432,"",""

@@ -1,4 +1,0 @@
-AUDITUSER,AUDITTIMESTAMP,ID,GROUPNAME,OWNERID,PARENTID
----------,--------------,--,---------,-------,--------
-SUPER,"2024-02-19 14:05:04.000",1,"Hach Built-In Reports",1,NULL
-SUPER,"2024-12-20 10:23:51.000",2,"Hach LabCal Reports",1,NULL

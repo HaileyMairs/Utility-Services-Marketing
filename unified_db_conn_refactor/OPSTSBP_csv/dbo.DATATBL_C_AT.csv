@@ -1,7 +1,0 @@
-AUDITUSER,AUDITTIMESTAMP,DATESTAMP,VARID,ACTION,CURVALUE,OLDVALUE
----------,--------------,---------,-----,------,--------,--------
-SPONGEBOBTESTPANTS,"2024-07-15 11:51:42.293","2024-07-15 00:00:00.000",21,1,"Reviewed number off by 500.",NULL
-RUSTAF,"2025-02-24 13:53:26.913","2020-01-31 00:00:00.000",195,1,"Retrieving data. Wait a few seconds and try to cut or copy again.",NULL
-RUSTAF,"2025-02-24 14:34:02.100","2020-02-29 00:00:00.000",49,1,"Retrieving data. Wait a few seconds and try to cut or copy again.",NULL
-rhtrinity,"2025-08-25 12:33:39.590","2025-08-25 00:00:00.000",3852,1,"Leaving note here",NULL
-rhtrinity,"2025-08-25 13:53:11.037","2025-08-25 00:00:00.000",3852,3,"","Leaving note here"
